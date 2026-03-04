@@ -1,30 +1,33 @@
 import sys
+import threading # La librería nativa para manejar tareas en segundo plano
 from PyQt6.QtWidgets import QApplication, QWidget, QLineEdit, QVBoxLayout
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal, QObject
+
+# ¡Importamos tu motor de descargas!
+import descargador
+
+class Senales(QObject):
+    descarga_finalizada = pyqtSignal()
 
 class BarraSpotlight(QWidget):
     def __init__(self):
         super().__init__()
+        self.senales = Senales()
+        self.senales.descarga_finalizada.connect(self.cerrar_aplicacion)
         self.configurar_ventana()
 
     def configurar_ventana(self):
-        # 1. Hacemos la ventana "invisible" (sin barra de título ni bordes) y siempre al frente
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-
-        # 2. Tamaño inicial y centrado en la pantalla
         self.resize(700, 80)
         self.centrar_en_pantalla()
 
-        # 3. Creamos el diseño (Layout)
         layout = QVBoxLayout()
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # 4. Creamos la barra de texto (QLineEdit)
         self.input_box = QLineEdit(self)
-        self.input_box.setPlaceholderText("Pega el link de YouTube y presiona Enter...")
+        self.input_box.setPlaceholderText("Pega el link (ej: url 720 --audio --inicio 1:00)...")
         
-        # 5. ¡Le damos estilo con CSS! Tonos oscuros estilo Mac
         self.input_box.setStyleSheet("""
             QLineEdit {
                 background-color: #1e1e1e;
@@ -36,44 +39,78 @@ class BarraSpotlight(QWidget):
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             }
             QLineEdit:focus {
-                border: 1px solid #007aff; /* Borde azul al seleccionarlo, estilo macOS */
+                border: 1px solid #007aff;
             }
         """)
 
-        # 6. Conectamos la tecla "Enter" a una función
         self.input_box.returnPressed.connect(self.procesar_input)
-
         layout.addWidget(self.input_box)
         self.setLayout(layout)
 
     def centrar_en_pantalla(self):
-        # Obtenemos la geometría de la pantalla y movemos nuestra ventana al centro exacto
         geometria_ventana = self.frameGeometry()
         centro_pantalla = self.screen().availableGeometry().center()
         geometria_ventana.moveCenter(centro_pantalla)
         self.move(geometria_ventana.topLeft())
 
     def procesar_input(self):
-        # Esta función se ejecuta al presionar Enter
         texto = self.input_box.text().strip()
         if texto:
-            print(f"URL recibida en la UI: {texto}")
-            # Limpiamos la caja para la próxima vez y ocultamos la ventana
+            # 1. Limpiamos y ocultamos la ventana INMEDIATAMENTE
             self.input_box.clear()
             self.hide()
 
+            # 2. Despachamos el trabajo a un hilo secundario
+            hilo_descarga = threading.Thread(target=self.analizar_y_descargar, args=(texto,))
+            hilo_descarga.start()
+
+    def analizar_y_descargar(self, comando):
+        # Separamos lo que escribiste por espacios
+        partes = comando.split()
+        
+        # El primer elemento siempre será el link
+        url = partes[0]
+        
+        # Valores por defecto si no escribes nada más
+        resolucion = 1080
+        solo_audio = False
+        inicio = None
+        fin = None
+
+        # Un analizador de texto sencillo para leer tus comandos
+        if "--audio" in partes:
+            solo_audio = True
+            
+        for parte in partes[1:]:
+            if parte.isdigit(): # Si escribiste un número suelto (ej: 720, 480)
+                resolucion = int(parte)
+
+        if "--inicio" in partes:
+            idx = partes.index("--inicio")
+            if idx + 1 < len(partes):
+                inicio = partes[idx + 1]
+                
+        if "--fin" in partes:
+            idx = partes.index("--fin")
+            if idx + 1 < len(partes):
+                fin = partes[idx + 1]
+
+        print(f"\n[SpotDark] Recibido. Enviando a descargador.py...")
+        
+        descargador.descargar_video(url, resolucion, inicio, fin, solo_audio)
+
+        self.senales.descarga_finalizada.emit()
+    
+    def cerrar_aplicacion(self):
+        print("\n[SpotDark] Proceso terminado. Cerrando aplicación...")
+        QApplication.quit()
+
     def keyPressEvent(self, evento):
-        # Permitimos cerrar la barra presionando la tecla "Escape" (ESC)
         if evento.key() == Qt.Key.Key_Escape:
-            self.close()
+            self.cerrar_aplicacion()
 
 if __name__ == '__main__':
-    # Todo programa de PyQt necesita una QApplication corriendo de fondo
     app = QApplication(sys.argv)
-    
-    # Creamos nuestra ventana y la mostramos
     ventana = BarraSpotlight()
     ventana.show()
-    
-    # Mantenemos el programa en ejecución hasta que lo cerremos
     sys.exit(app.exec())
