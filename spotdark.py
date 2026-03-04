@@ -3,7 +3,6 @@ import threading # La librería nativa para manejar tareas en segundo plano
 from PyQt6.QtWidgets import QApplication, QWidget, QLineEdit, QVBoxLayout
 from PyQt6.QtCore import Qt, pyqtSignal, QObject
 
-# ¡Importamos tu motor de descargas!
 import descargador
 
 class Senales(QObject):
@@ -56,33 +55,27 @@ class BarraSpotlight(QWidget):
     def procesar_input(self):
         texto = self.input_box.text().strip()
         if texto:
-            # 1. Limpiamos y ocultamos la ventana INMEDIATAMENTE
             self.input_box.clear()
             self.hide()
 
-            # 2. Despachamos el trabajo a un hilo secundario
             hilo_descarga = threading.Thread(target=self.analizar_y_descargar, args=(texto,))
             hilo_descarga.start()
 
     def analizar_y_descargar(self, comando):
-        # Separamos lo que escribiste por espacios
         partes = comando.split()
         
-        # El primer elemento siempre será el link
         url = partes[0]
         
-        # Valores por defecto si no escribes nada más
         resolucion = 1080
         solo_audio = False
         inicio = None
         fin = None
 
-        # Un analizador de texto sencillo para leer tus comandos
         if "--audio" in partes:
             solo_audio = True
             
         for parte in partes[1:]:
-            if parte.isdigit(): # Si escribiste un número suelto (ej: 720, 480)
+            if parte.isdigit(): 
                 resolucion = int(parte)
 
         if "--inicio" in partes:

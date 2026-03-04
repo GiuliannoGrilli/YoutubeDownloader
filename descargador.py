@@ -10,21 +10,21 @@ def tiempo_a_segundos(tiempo_str):
     if not tiempo_str:
         return None
     
-    # Separamos los minutos de los segundos usando los dos puntos
     partes = [int(p) for p in tiempo_str.split(':')]
     
-    if len(partes) == 2: # Si el formato es MM:SS
+    if len(partes) == 2: # Si formato MM:SS
         return partes[0] * 60 + partes[1]
-    elif len(partes) == 3: # Si es un video largo y usan HH:MM:SS
+    elif len(partes) == 3: # Si formato largo HH:MM:SS
         return partes[0] * 3600 + partes[1] * 60 + partes[2]
     
-    return int(tiempo_str) # Por si el usuario solo escribe segundos
+    return int(tiempo_str) # Por si solo segundos
 
 def descargar_video(url, resolucion=1080, inicio=None, fin=None, solo_audio=False):
+    ruta_destino = os.path.expanduser('~/Downloads/')
     if solo_audio:
         opciones = {
-            'format': 'bestaudio/best', # Pedimos solo la pista de audio
-            'outtmpl': '%(title)s_audio.%(ext)s', 
+            'format': 'bestaudio/best', # Pista de audio mejor calidad
+            'outtmpl': os.path.join(ruta_destino, '%(title)s_audio.%(ext)s'), 
             'postprocessors': [{
                 # Le pedimos a FFmpeg que extraiga el audio y lo convierta
                 'key': 'FFmpegExtractAudio',
@@ -38,7 +38,7 @@ def descargar_video(url, resolucion=1080, inicio=None, fin=None, solo_audio=Fals
     
         opciones = {
             'format': formato_deseado,
-            'outtmpl': f'%(title)s_{resolucion}p.%(ext)s', # Le sumamos la resolución al nombre del archivo
+            'outtmpl': os.path.join(ruta_destino, f'%(title)s_{resolucion}p.%(ext)s'),
             'merge_output_format': 'mp4', # Forzamos a que el resultado final sea MP4, el estándar más cómodo para editar
         }
 
@@ -64,7 +64,7 @@ def descargar_video(url, resolucion=1080, inicio=None, fin=None, solo_audio=Fals
             else:
                 archivo_final = ydl.prepare_filename(info)
                 base, _ = os.path.splitext(archivo_final)
-                archivo_final = f"{base}.mp4"
+                archivo_final = f"{base}.mp3" if solo_audio else f"{base}.mp4"
         print("¡Descarga completada con éxito!")
 
     # --- AUTOMATIZACIÓN PARA MACOS ---
@@ -84,7 +84,6 @@ if __name__ == "__main__":
     parser.add_argument("resolucion", type=int, nargs='?', default=1080, help="La resolución deseada (ej. 480, 720, 1080)")
     
     # --- ARGUMENTOS OPCIONALES PARA RECORTES ---
-    # Usamos '--' para indicar que no son obligatorios al usar la terminal
     parser.add_argument("--inicio", type=str, help="Tiempo de inicio (ej. 0:45)", default=None)
     parser.add_argument("--fin", type=str, help="Tiempo de fin (ej. 1:39)", default=None)
 
