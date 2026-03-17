@@ -3,13 +3,13 @@ import argparse
 import subprocess
 import sys        
 import os
-from yt_dlp.utils import download_range_func
+from typing import Any
+from yt_dlp import download_range_func
 
-# --- NUEVA FUNCIÓN: Notificaciones nativas de Apple ---
+
 def notificar_mac(mensaje, titulo="SpotDark"):
     """Envía una notificación nativa en macOS."""
     if sys.platform == 'darwin':
-        # osascript nos permite ejecutar AppleScript desde la terminal
         script = f'display notification "{mensaje}" with title "{titulo}"'
         subprocess.run(['osascript', '-e', script], check=False)
 
@@ -23,48 +23,81 @@ def tiempo_a_segundos(tiempo_str):
         return partes[0] * 3600 + partes[1] * 60 + partes[2]
     return int(tiempo_str)
 
+def obtener_formatos_video(url: str) -> list[int]:
+    """Obtiene una lista de las resoluciones de video disponibles (heights)."""
+    navegador_para_cookies = ('firefox',)
+    opciones: dict[str, Any] = {
+        'cookiesfrombrowser': navegador_para_cookies,
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': False,
+    }
+    
+    try:
+        with yt_dlp.YoutubeDL(opciones) as ydl: # type: ignore
+            info = ydl.extract_info(url, download=False)
+            if not info: return []
+            formatos = info.get('formats', [])
+            
+            resoluciones = set()
+            for f in formatos:
+                if f.get('vcodec') != 'none' and f.get('height'):
+                    resoluciones.add(f.get('height'))
+                    
+            return sorted(list(resoluciones))
+    except Exception as e:
+        print(f"Error al obtener formatos: {e}")
+        return []
+
 def descargar_video(url, resolucion=1080, inicio=None, fin=None, solo_audio=False):
     ruta_destino = os.path.expanduser('~/Downloads/')
     
-    # Avisamos que arrancó el proceso (opcional, puedes borrar esta notificación si te resulta molesta)
     notificar_mac(f"Iniciando descarga...", "SpotDark")
     
     navegador_para_cookies = ('firefox',)
+    opciones: dict[str, Any] = {
+        'cookiesfrombrowser': navegador_para_cookies,
+        'remote_components': 'ejs:github',
+    }
 
     if solo_audio:
-        opciones = {
-            'format': 'bestaudio/best', 
-            'outtmpl': os.path.join(ruta_destino, '%(title)s_audio.%(ext)s'), 
-            'cookiesfrombrowser': navegador_para_cookies,
-            'remote_components': 'ejs:github',
+        opciones.update({
+            'format': 'bestaudio/best',
+            'outtmpl': os.path.join(ruta_destino, '%(title)s_audio.%(ext)s'),
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
-                'preferredquality': '192', 
+                'preferredquality': '192',
             }],
-        }
+        })
         print(f"Iniciando descarga de AUDIO: {url} en MP3...")
     else:
-        formato_deseado = f'bestvideo[height<={resolucion}]+bestaudio/best[height<={resolucion}]'
-        opciones = {
+        # height<={resolucion} hace que yt-dlp elija automaticamente la mejor
+        # resolucion disponible <= la pedida (fallback automatico).
+        formato_deseado = (
+            f'bestvideo[height<={resolucion}]+bestaudio/'
+            f'bestvideo[height<={resolucion}]+bestaudio[ext=m4a]/'
+            f'best[height<={resolucion}]'
+        )
+        opciones.update({
             'format': formato_deseado,
-            'outtmpl': os.path.join(ruta_destino, f'%(title)s_{resolucion}p.%(ext)s'),
-            'cookiesfrombrowser': navegador_para_cookies,
-            'remote_components': 'ejs:github',
-            'merge_output_format': 'mp4', 
-        }
+            # %(height)s en el nombre refleja la resolucion REAL descargada
+            'outtmpl': os.path.join(ruta_destino, '%(title)s_%(height)sp.%(ext)s'),
+            'merge_output_format': 'mp4',
+        })
 
     if inicio and fin:
         seg_inicio = tiempo_a_segundos(inicio)
         seg_fin = tiempo_a_segundos(fin)
-        opciones['download_ranges'] = download_range_func(None, [(seg_inicio, seg_fin)])
-        opciones['force_keyframes_at_cuts'] = True 
-        print(f"Resolución: {resolucion}p | Fragmento: {inicio} a {fin}...")
+        if seg_inicio is not None and seg_fin is not None:
+            opciones['download_ranges'] = download_range_func(None, [(int(seg_inicio), int(seg_fin))])
+        opciones['force_keyframes_at_cuts'] = True
+        print(f"Resolución solicitada: {resolucion}p | Fragmento: {inicio} a {fin}...")
     else:
-        print(f"Iniciando descarga de: {url} en {resolucion}p...")
+        print(f"Iniciando descarga de: {url} | Resolución solicitada: {resolucion}p (se usará la más cercana disponible)...")
     
     try:
-        with yt_dlp.YoutubeDL(opciones) as ydl:
+        with yt_dlp.YoutubeDL(opciones) as ydl: 
             info = ydl.extract_info(url, download=True)
             if 'requested_downloads' in info:
                 archivo_final = info['requested_downloads'][0]['filepath']
@@ -79,13 +112,11 @@ def descargar_video(url, resolucion=1080, inicio=None, fin=None, solo_audio=Fals
             print("Ejecutando limpieza de cuarentena...")
             subprocess.run(['xattr', '-c', archivo_final], check=False)
             
-            # --- NOTIFICACIÓN DE ÉXITO ---
             nombre_corto = os.path.basename(archivo_final)
             notificar_mac(f"¡Listo! {nombre_corto} guardado en Descargas.", "SpotDark")
         
     except Exception as e:
         print(f"Ocurrió un error: {e}")
-        # --- NOTIFICACIÓN DE ERROR ---
         notificar_mac(f"Error al descargar: revisa el link o tu conexión.", "SpotDark - Error")
 
 if __name__ == "__main__":
