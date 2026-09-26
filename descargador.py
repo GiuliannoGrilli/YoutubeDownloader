@@ -31,6 +31,7 @@ def obtener_formatos_video(url: str) -> list[int]:
         'quiet': True,
         'no_warnings': True,
         'extract_flat': False,
+        'noplaylist': True,
     }
     
     try:
@@ -50,14 +51,15 @@ def obtener_formatos_video(url: str) -> list[int]:
         return []
 
 def descargar_video(url, resolucion=1080, inicio=None, fin=None, solo_audio=False):
-    ruta_destino = os.path.expanduser('~/Downloads/')
+    ruta_destino = os.path.expanduser('~/Desktop/')
     
     notificar_mac(f"Iniciando descarga...", "SpotDark")
     
     navegador_para_cookies = ('firefox',)
     opciones: dict[str, Any] = {
         'cookiesfrombrowser': navegador_para_cookies,
-        'remote_components': 'ejs:github',
+        'remote_components': ['ejs:github'],
+        'noplaylist': True,
     }
 
     if solo_audio:
